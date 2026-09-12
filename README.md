@@ -78,6 +78,10 @@ The response is one of `queued`, `running`, `success`, or `failure`.
 
 Requests for a command already running are queued. Once it exits, all requests accumulated during that execution run together in one follow-up process and receive the same result. The most recent 65,536 deployment IDs and statuses exist only while the server is running.
 
+## Reloading
+
+The service checks its configuration file every five seconds. Valid command changes take effect for new deployment requests; active deployments continue using the command definition that started them. Invalid changes are ignored and the previous configuration remains active. Changing `port` requires a restart.
+
 ## Security
 
 Do not expose this service directly to the Internet. Put it behind a TLS reverse proxy, restrict access to trusted callers, and protect each command API key as a secret. The service uses plaintext HTTP and does not provide TLS itself.

@@ -33,7 +33,7 @@ fn accepts_http_1_0_requests() {
     .is_ok());
 }
 
-fn send_request(config: &Config, deployments: &Arc<Deployments>, request: &str) -> String {
+fn send_request(config: &RwLock<Config>, deployments: &Arc<Deployments>, request: &str) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     thread::scope(|scope| {
@@ -59,11 +59,11 @@ fn endpoints_require_the_matching_command_key() {
     let mut second = first.clone();
     second.id = "other".to_owned();
     second.api_key = [8; 32];
-    let config = Config {
+    let config = RwLock::new(Config {
         port: 8080,
         commands: vec![first, second],
-    };
-    let deployments = Arc::new(Deployments::new(config.commands.clone()));
+    });
+    let deployments = Arc::new(Deployments::new());
     let first_key = "07".repeat(32);
     let second_key = "08".repeat(32);
 
@@ -101,4 +101,36 @@ fn endpoints_require_the_matching_command_key() {
         thread::sleep(Duration::from_millis(10));
     }
     panic!("deployment did not succeed");
+}
+
+#[test]
+fn retains_status_access_for_a_reloaded_command_key() {
+    let config = RwLock::new(Config {
+        port: 8080,
+        commands: vec![command()],
+    });
+    let deployments = Arc::new(Deployments::new());
+    let old_key = "07".repeat(32);
+    let new_key = "09".repeat(32);
+    let started = send_request(
+        &config,
+        &deployments,
+        &format!("POST /start/test HTTP/1.1\r\nAuthorization: Bearer {old_key}\r\n\r\n"),
+    );
+    let id: u64 = response_body(&started).parse().unwrap();
+    config.write().unwrap().commands[0].api_key = [9; 32];
+
+    let old_status = send_request(
+        &config,
+        &deployments,
+        &format!("GET /status/{id} HTTP/1.1\r\nAuthorization: Bearer {old_key}\r\n\r\n"),
+    );
+    assert!(old_status.starts_with("HTTP/1.1 200"));
+
+    let new_status = send_request(
+        &config,
+        &deployments,
+        &format!("GET /status/{id} HTTP/1.1\r\nAuthorization: Bearer {new_key}\r\n\r\n"),
+    );
+    assert!(new_status.starts_with("HTTP/1.1 404"));
 }

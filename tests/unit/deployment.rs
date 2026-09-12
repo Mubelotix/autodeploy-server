@@ -29,14 +29,17 @@ fn wait_for(manager: &Deployments, id: u64, expected: DeploymentStatus) {
 
 #[test]
 fn queues_follow_up_batch() {
-    let manager = Arc::new(Deployments::new(vec![command(
-        vec!["0.20"],
-        Duration::from_secs(1),
-    )]));
-    let first = manager.start(0).unwrap();
+    let manager = Arc::new(Deployments::new());
+    let first = manager
+        .start(command(vec!["0.20"], Duration::from_secs(1)))
+        .unwrap();
     wait_for(&manager, first, DeploymentStatus::Running);
-    let second = manager.start(0).unwrap();
-    let third = manager.start(0).unwrap();
+    let second = manager
+        .start(command(vec!["0.20"], Duration::from_secs(1)))
+        .unwrap();
+    let third = manager
+        .start(command(vec!["0.20"], Duration::from_secs(1)))
+        .unwrap();
     assert_eq!(manager.status(second).unwrap().1, DeploymentStatus::Queued);
     assert_eq!(manager.status(third).unwrap().1, DeploymentStatus::Queued);
     wait_for(&manager, first, DeploymentStatus::Success);
@@ -46,10 +49,9 @@ fn queues_follow_up_batch() {
 
 #[test]
 fn fails_a_command_that_exceeds_its_timeout() {
-    let manager = Arc::new(Deployments::new(vec![command(
-        vec!["1"],
-        Duration::from_millis(50),
-    )]));
-    let id = manager.start(0).unwrap();
+    let manager = Arc::new(Deployments::new());
+    let id = manager
+        .start(command(vec!["1"], Duration::from_millis(50)))
+        .unwrap();
     wait_for(&manager, id, DeploymentStatus::Failure);
 }

@@ -1,6 +1,9 @@
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+use std::thread;
 use std::time::Duration;
 
 const MAX_COMMANDS: usize = 128;
@@ -41,6 +44,20 @@ impl Config {
             matches | keys_equal(key, &command.api_key) as u8
         }) != 0
     }
+}
+
+pub(crate) fn watch(path: PathBuf, config: Arc<RwLock<Config>>, port: u16) {
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(5));
+            let Ok(updated) = Config::load(path.as_os_str()) else {
+                continue;
+            };
+            if updated.port == port {
+                *config.write().expect("configuration lock poisoned") = updated;
+            }
+        }
+    });
 }
 
 fn validate_config_file(file: &File) -> Result<(), String> {

@@ -1,7 +1,7 @@
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{self, Receiver, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -12,7 +12,11 @@ const HTTP_WORKERS: usize = 16;
 const HTTP_QUEUE_SIZE: usize = 64;
 const MAX_HEADER_SIZE: usize = 16 * 1024;
 
-pub(crate) fn serve(listener: TcpListener, config: Arc<Config>, deployments: Arc<Deployments>) {
+pub(crate) fn serve(
+    listener: TcpListener,
+    config: Arc<RwLock<Config>>,
+    deployments: Arc<Deployments>,
+) {
     let (sender, receiver) = mpsc::sync_channel(HTTP_QUEUE_SIZE);
     let receiver = Arc::new(Mutex::new(receiver));
     for _ in 0..HTTP_WORKERS {
@@ -46,7 +50,7 @@ fn enqueue_connection(sender: &SyncSender<TcpStream>, stream: TcpStream) {
 
 fn serve_connections(
     receiver: Arc<Mutex<Receiver<TcpStream>>>,
-    config: Arc<Config>,
+    config: Arc<RwLock<Config>>,
     deployments: Arc<Deployments>,
 ) {
     loop {
@@ -69,7 +73,11 @@ enum Route<'a> {
     Status(u64),
 }
 
-fn handle_connection(mut stream: TcpStream, config: &Config, deployments: &Arc<Deployments>) {
+fn handle_connection(
+    mut stream: TcpStream,
+    config: &RwLock<Config>,
+    deployments: &Arc<Deployments>,
+) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
     let request = match read_request(&mut stream) {
@@ -90,13 +98,13 @@ fn handle_connection(mut stream: TcpStream, config: &Config, deployments: &Arc<D
         let _ = write_response(&mut stream, 401, "Unauthorized", "unauthorized");
         return;
     };
-    if !config.authorizes_any(&api_key) {
-        let _ = write_response(&mut stream, 401, "Unauthorized", "unauthorized");
-        return;
-    }
-
     match route {
         Route::Start(command_id) => {
+            let config = config.read().expect("configuration lock poisoned");
+            if !config.authorizes_any(&api_key) {
+                let _ = write_response(&mut stream, 401, "Unauthorized", "unauthorized");
+                return;
+            }
             let Some(command_index) = config.command_index(command_id) else {
                 let _ = write_response(&mut stream, 404, "Not Found", "not found");
                 return;
@@ -107,7 +115,7 @@ fn handle_connection(mut stream: TcpStream, config: &Config, deployments: &Arc<D
                 let _ =
                     write_response(&mut stream, 405, "Method Not Allowed", "method not allowed");
             } else {
-                match deployments.start(command_index) {
+                match deployments.start(config.commands[command_index].clone()) {
                     Ok(id) => {
                         let _ = write_response(&mut stream, 200, "OK", &id.to_string());
                     }
@@ -128,15 +136,22 @@ fn handle_connection(mut stream: TcpStream, config: &Config, deployments: &Arc<D
                     write_response(&mut stream, 405, "Method Not Allowed", "method not allowed");
                 return;
             }
-            let Some((command_index, status)) = deployments.status(id) else {
-                let _ = write_response(&mut stream, 404, "Not Found", "not found");
-                return;
-            };
-            if !keys_equal(&api_key, &config.commands[command_index].api_key) {
-                let _ = write_response(&mut stream, 404, "Not Found", "not found");
-                return;
+            match deployments.status(id) {
+                Some((expected_key, status)) if keys_equal(&api_key, &expected_key) => {
+                    let _ = write_response(&mut stream, 200, "OK", status.as_str());
+                }
+                Some(_) | None
+                    if config
+                        .read()
+                        .expect("configuration lock poisoned")
+                        .authorizes_any(&api_key) =>
+                {
+                    let _ = write_response(&mut stream, 404, "Not Found", "not found");
+                }
+                Some(_) | None => {
+                    let _ = write_response(&mut stream, 401, "Unauthorized", "unauthorized");
+                }
             }
-            let _ = write_response(&mut stream, 200, "OK", status.as_str());
         }
     }
 }

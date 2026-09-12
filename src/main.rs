@@ -4,7 +4,8 @@ mod http;
 
 use std::env;
 use std::net::TcpListener;
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use config::Config;
 use deployment::Deployments;
@@ -26,11 +27,13 @@ fn main() {
         _ => fail("usage: autodeploy-server <config-file>"),
     };
     let config = match Config::load(config_path) {
-        Ok(config) => Arc::new(config),
+        Ok(config) => Arc::new(RwLock::new(config)),
         Err(error) => fail(&error),
     };
-    let deployments = Arc::new(Deployments::new(config.commands.clone()));
-    let listen_address = format!("{LISTEN_HOST}:{}", config.port);
+    let port = config.read().expect("configuration lock poisoned").port;
+    config::watch(PathBuf::from(config_path), Arc::clone(&config), port);
+    let deployments = Arc::new(Deployments::new());
+    let listen_address = format!("{LISTEN_HOST}:{port}");
     let listener = match TcpListener::bind(&listen_address) {
         Ok(listener) => listener,
         Err(error) => fail(&format!("cannot bind {listen_address}: {error}")),

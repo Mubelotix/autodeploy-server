@@ -33,7 +33,7 @@ impl DeploymentStatus {
 }
 
 struct Deployment {
-    command_index: usize,
+    api_key: [u8; 32],
     status: DeploymentStatus,
 }
 
@@ -48,46 +48,38 @@ struct CommandRuntime {
     phase: CommandPhase,
     queued: Vec<u64>,
     running: Vec<u64>,
+    command: Option<ConfiguredCommand>,
 }
 
 struct DeploymentState {
     next_id: u64,
     deployments: BTreeMap<u64, Deployment>,
-    commands: Vec<CommandRuntime>,
+    commands: BTreeMap<String, CommandRuntime>,
 }
 
 pub(crate) struct Deployments {
-    commands: Arc<Vec<ConfiguredCommand>>,
     state: Mutex<DeploymentState>,
 }
 
 impl Deployments {
-    pub(crate) fn new(commands: Vec<ConfiguredCommand>) -> Self {
+    pub(crate) fn new() -> Self {
         let next_id = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or(Duration::ZERO)
             .as_nanos()
             .try_into()
             .unwrap_or(u64::MAX);
-        let command_count = commands.len();
         Self {
-            commands: Arc::new(commands),
             state: Mutex::new(DeploymentState {
                 next_id,
                 deployments: BTreeMap::new(),
-                commands: (0..command_count)
-                    .map(|_| CommandRuntime {
-                        phase: CommandPhase::Idle,
-                        queued: Vec::new(),
-                        running: Vec::new(),
-                    })
-                    .collect(),
+                commands: BTreeMap::new(),
             }),
         }
     }
 
-    pub(crate) fn start(self: &Arc<Self>, command_index: usize) -> Result<u64, ()> {
-        let (id, start_batch) = {
+    pub(crate) fn start(self: &Arc<Self>, command: ConfiguredCommand) -> Result<u64, ()> {
+        let (id, command_id, start_batch) = {
             let mut state = self.state.lock().expect("deployment state poisoned");
             reclaim_finished(&mut state.deployments);
             if state.deployments.len() >= MAX_DEPLOYMENTS {
@@ -98,59 +90,93 @@ impl Deployments {
             state.deployments.insert(
                 id,
                 Deployment {
-                    command_index,
+                    api_key: command.api_key,
                     status: DeploymentStatus::Queued,
                 },
             );
-            let command = &mut state.commands[command_index];
-            command.queued.push(id);
-            let start_batch = command.phase == CommandPhase::Idle;
+            let command_id = command.id.clone();
+            let runtime =
+                state
+                    .commands
+                    .entry(command_id.clone())
+                    .or_insert_with(|| CommandRuntime {
+                        phase: CommandPhase::Idle,
+                        queued: Vec::new(),
+                        running: Vec::new(),
+                        command: None,
+                    });
+            runtime.queued.push(id);
+            runtime.command = Some(command);
+            let start_batch = runtime.phase == CommandPhase::Idle;
             if start_batch {
-                command.phase = CommandPhase::Starting;
+                runtime.phase = CommandPhase::Starting;
             }
-            (id, start_batch)
+            (id, command_id, start_batch)
         };
         if start_batch {
-            self.spawn_batch(command_index);
+            self.spawn_batch(command_id);
         }
         Ok(id)
     }
 
-    pub(crate) fn status(&self, id: u64) -> Option<(usize, DeploymentStatus)> {
+    pub(crate) fn status(&self, id: u64) -> Option<([u8; 32], DeploymentStatus)> {
         let state = self.state.lock().expect("deployment state poisoned");
         state
             .deployments
             .get(&id)
-            .map(|deployment| (deployment.command_index, deployment.status))
+            .map(|deployment| (deployment.api_key, deployment.status))
     }
 
-    fn spawn_batch(self: &Arc<Self>, command_index: usize) {
+    fn spawn_batch(self: &Arc<Self>, command_id: String) {
         let deployments = Arc::clone(self);
+        let worker_command_id = command_id.clone();
         if thread::Builder::new()
-            .spawn(move || deployments.run_batch(command_index))
+            .spawn(move || deployments.run_batch(worker_command_id))
             .is_err()
         {
-            self.fail_starting_batch(command_index);
+            self.fail_starting_batch(&command_id);
         }
     }
 
-    fn fail_starting_batch(&self, command_index: usize) {
+    fn fail_starting_batch(&self, command_id: &str) {
         let mut state = self.state.lock().expect("deployment state poisoned");
-        let queued = std::mem::take(&mut state.commands[command_index].queued);
+        let queued = std::mem::take(
+            &mut state
+                .commands
+                .get_mut(command_id)
+                .expect("command runtime missing")
+                .queued,
+        );
         for id in queued {
             if let Some(deployment) = state.deployments.get_mut(&id) {
                 deployment.status = DeploymentStatus::Failure;
             }
         }
-        state.commands[command_index].phase = CommandPhase::Idle;
+        let runtime = state
+            .commands
+            .get_mut(command_id)
+            .expect("command runtime missing");
+        runtime.command = None;
+        runtime.phase = CommandPhase::Idle;
     }
 
-    fn run_batch(self: Arc<Self>, command_index: usize) {
-        let batch = {
+    fn run_batch(self: Arc<Self>, command_id: String) {
+        let (batch, command) = {
             let mut state = self.state.lock().expect("deployment state poisoned");
-            let batch = std::mem::take(&mut state.commands[command_index].queued);
+            let batch = std::mem::take(
+                &mut state
+                    .commands
+                    .get_mut(&command_id)
+                    .expect("command runtime missing")
+                    .queued,
+            );
             if batch.is_empty() {
-                state.commands[command_index].phase = CommandPhase::Idle;
+                let runtime = state
+                    .commands
+                    .get_mut(&command_id)
+                    .expect("command runtime missing");
+                runtime.command = None;
+                runtime.phase = CommandPhase::Idle;
                 return;
             }
             for id in &batch {
@@ -158,13 +184,17 @@ impl Deployments {
                     deployment.status = DeploymentStatus::Running;
                 }
             }
-            let command = &mut state.commands[command_index];
-            command.running = batch.clone();
-            command.phase = CommandPhase::Running;
-            batch
+            let runtime = state
+                .commands
+                .get_mut(&command_id)
+                .expect("command runtime missing");
+            let command = runtime.command.take().expect("queued command missing");
+            runtime.running = batch.clone();
+            runtime.phase = CommandPhase::Running;
+            (batch, command)
         };
 
-        let success = execute(&self.commands[command_index]);
+        let success = execute(&command);
         let start_next_batch = {
             let mut state = self.state.lock().expect("deployment state poisoned");
             for id in &batch {
@@ -176,10 +206,13 @@ impl Deployments {
                     };
                 }
             }
-            let command = &mut state.commands[command_index];
-            command.running.clear();
-            let start_next_batch = !command.queued.is_empty();
-            command.phase = if start_next_batch {
+            let runtime = state
+                .commands
+                .get_mut(&command_id)
+                .expect("command runtime missing");
+            runtime.running.clear();
+            let start_next_batch = !runtime.queued.is_empty();
+            runtime.phase = if start_next_batch {
                 CommandPhase::Starting
             } else {
                 CommandPhase::Idle
@@ -187,7 +220,7 @@ impl Deployments {
             start_next_batch
         };
         if start_next_batch {
-            self.spawn_batch(command_index);
+            self.spawn_batch(command_id);
         }
     }
 }

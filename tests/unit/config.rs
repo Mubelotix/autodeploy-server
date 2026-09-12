@@ -17,10 +17,9 @@ fn rejects_invalid_arguments() {
 }
 
 #[test]
-fn parses_only_valid_api_keys() {
-    assert_eq!(parse_api_key(&"aB".repeat(32)).unwrap(), [0xab; 32]);
-    assert!(parse_api_key("a").is_err());
-    assert!(parse_api_key(&"zz".repeat(32)).is_err());
+fn parses_any_nonempty_api_key() {
+    assert_eq!(parse_api_key("homer-api-key").unwrap(), "homer-api-key");
+    assert!(parse_api_key("").is_err());
 }
 
 #[test]

@@ -8,7 +8,7 @@ unsafe extern "C" {
 fn command(arguments: Vec<&str>, timeout: Duration) -> ConfiguredCommand {
     ConfiguredCommand {
         id: "test".to_owned(),
-        api_key: [7; 32],
+        api_key: "test-key".to_owned(),
         uid: unsafe { getuid() },
         gid: unsafe { getgid() },
         executable: "/bin/sleep".to_owned(),

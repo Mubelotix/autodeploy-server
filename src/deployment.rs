@@ -33,7 +33,7 @@ impl DeploymentStatus {
 }
 
 struct Deployment {
-    api_key: [u8; 32],
+    api_key: String,
     status: DeploymentStatus,
 }
 
@@ -90,7 +90,7 @@ impl Deployments {
             state.deployments.insert(
                 id,
                 Deployment {
-                    api_key: command.api_key,
+                    api_key: command.api_key.clone(),
                     status: DeploymentStatus::Queued,
                 },
             );
@@ -119,12 +119,12 @@ impl Deployments {
         Ok(id)
     }
 
-    pub(crate) fn status(&self, id: u64) -> Option<([u8; 32], DeploymentStatus)> {
+    pub(crate) fn status(&self, id: u64) -> Option<(String, DeploymentStatus)> {
         let state = self.state.lock().expect("deployment state poisoned");
         state
             .deployments
             .get(&id)
-            .map(|deployment| (deployment.api_key, deployment.status))
+            .map(|deployment| (deployment.api_key.clone(), deployment.status))
     }
 
     fn spawn_batch(self: &Arc<Self>, command_id: String) {

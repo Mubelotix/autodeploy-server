@@ -65,7 +65,7 @@ fn serve_connections(
 struct Request {
     method: String,
     path: String,
-    api_key: Option<[u8; 32]>,
+    api_key: Option<String>,
 }
 
 enum Route<'a> {

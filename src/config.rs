@@ -11,7 +11,7 @@ const MAX_COMMANDS: usize = 128;
 #[derive(Clone)]
 pub(crate) struct ConfiguredCommand {
     pub(crate) id: String,
-    pub(crate) api_key: [u8; 32],
+    pub(crate) api_key: String,
     pub(crate) uid: u32,
     pub(crate) gid: u32,
     pub(crate) executable: String,
@@ -39,7 +39,7 @@ impl Config {
         self.commands.iter().position(|command| command.id == id)
     }
 
-    pub(crate) fn authorizes_any(&self, key: &[u8; 32]) -> bool {
+    pub(crate) fn authorizes_any(&self, key: &str) -> bool {
         self.commands.iter().fold(0_u8, |matches, command| {
             matches | keys_equal(key, &command.api_key) as u8
         }) != 0
@@ -78,7 +78,7 @@ fn validate_config_file(file: &File) -> Result<(), String> {
 
 struct PendingCommand {
     id: String,
-    api_key: Option<[u8; 32]>,
+    api_key: Option<String>,
     user: Option<String>,
     group: Option<String>,
     executable: Option<String>,
@@ -270,34 +270,17 @@ pub(crate) fn is_identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
-pub(crate) fn parse_api_key(value: &str) -> Result<[u8; 32], String> {
-    if value.len() != 64 {
-        return Err("api_key must be 64 hexadecimal characters".to_owned());
-    }
-    let mut key = [0_u8; 32];
-    for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
-        let high = hex_digit(pair[0]).ok_or_else(|| "api_key must be hexadecimal".to_owned())?;
-        let low = hex_digit(pair[1]).ok_or_else(|| "api_key must be hexadecimal".to_owned())?;
-        key[index] = high << 4 | low;
-    }
-    Ok(key)
+pub(crate) fn parse_api_key(value: &str) -> Result<String, String> {
+    nonempty(value, "api_key")
 }
 
-pub(crate) fn keys_equal(left: &[u8; 32], right: &[u8; 32]) -> bool {
-    let mut difference = 0_u8;
-    for index in 0..left.len() {
-        difference |= left[index] ^ right[index];
+pub(crate) fn keys_equal(left: &str, right: &str) -> bool {
+    let mut difference = left.len() ^ right.len();
+    for index in 0..left.len().max(right.len()) {
+        difference |= usize::from(*left.as_bytes().get(index).unwrap_or(&0))
+            ^ usize::from(*right.as_bytes().get(index).unwrap_or(&0));
     }
     difference == 0
-}
-
-fn hex_digit(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 fn parse_arguments(value: &str) -> Result<Vec<String>, String> {

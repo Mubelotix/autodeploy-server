@@ -42,7 +42,7 @@ timeout = 300
 ```
 
 - Command IDs, users, and groups may contain letters, digits, `_`, and `-`.
-- API keys are exactly 64 hexadecimal characters. Generate a key with `openssl rand -hex 32`.
+- API keys are non-empty secrets. Generate a strong key with `openssl rand -hex 32`.
 - The executable must be an absolute path.
 - Arguments are a comma-separated list of quoted strings. Quotes and commas cannot be included in an argument.
 - `timeout` is a positive number of seconds. A command that exceeds it is terminated and reported as a failure.

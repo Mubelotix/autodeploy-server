@@ -9,7 +9,7 @@ unsafe extern "C" {
 fn command() -> ConfiguredCommand {
     ConfiguredCommand {
         id: "test".to_owned(),
-        api_key: [7; 32],
+        api_key: "first-key".to_owned(),
         uid: unsafe { getuid() },
         gid: unsafe { getgid() },
         executable: "/bin/true".to_owned(),
@@ -58,14 +58,14 @@ fn endpoints_require_the_matching_command_key() {
     let first = command();
     let mut second = first.clone();
     second.id = "other".to_owned();
-    second.api_key = [8; 32];
+    second.api_key = "second-key".to_owned();
     let config = RwLock::new(Config {
         port: 8080,
         commands: vec![first, second],
     });
     let deployments = Arc::new(Deployments::new());
-    let first_key = "07".repeat(32);
-    let second_key = "08".repeat(32);
+    let first_key = "first-key";
+    let second_key = "second-key";
 
     let denied = send_request(
         &config,
@@ -110,15 +110,15 @@ fn retains_status_access_for_a_reloaded_command_key() {
         commands: vec![command()],
     });
     let deployments = Arc::new(Deployments::new());
-    let old_key = "07".repeat(32);
-    let new_key = "09".repeat(32);
+    let old_key = "first-key";
+    let new_key = "new-key";
     let started = send_request(
         &config,
         &deployments,
         &format!("POST /start/test HTTP/1.1\r\nAuthorization: Bearer {old_key}\r\n\r\n"),
     );
     let id: u64 = response_body(&started).parse().unwrap();
-    config.write().unwrap().commands[0].api_key = [9; 32];
+    config.write().unwrap().commands[0].api_key = new_key.to_owned();
 
     let old_status = send_request(
         &config,

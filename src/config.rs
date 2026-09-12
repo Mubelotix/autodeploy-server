@@ -195,9 +195,6 @@ fn parse_config(contents: &str) -> Result<Config, String> {
     if let Some(command) = current {
         commands.push(command.finish()?);
     }
-    if commands.is_empty() {
-        return Err("configuration has no commands".to_owned());
-    }
     Ok(Config {
         port: port.ok_or_else(|| "configuration is missing port".to_owned())?,
         commands,

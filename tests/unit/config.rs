@@ -38,6 +38,13 @@ fn parses_only_valid_ports() {
 }
 
 #[test]
+fn accepts_a_configuration_without_commands() {
+    let config = parse_config("port = 8080\n").unwrap();
+    assert_eq!(config.port, 8080);
+    assert!(config.commands.is_empty());
+}
+
+#[test]
 fn configuration_requires_every_setting() {
     let error = match parse_config(
         "port = 8080\n[command test]\napi_key = 00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa\ngroup = users\nexecutable = /bin/true\narguments = []\ntimeout = 30\n",

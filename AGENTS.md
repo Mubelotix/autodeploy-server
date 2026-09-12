@@ -1,0 +1,1 @@
+Maximum security is the goal, keep code as small as it needs to be. Documentation should solely be made in README.md, which should be kept up-to-date but must not contain technical internal information users won't care about.

@@ -17,6 +17,7 @@ pub(crate) struct ConfiguredCommand {
 }
 
 pub(crate) struct Config {
+    pub(crate) port: u16,
     pub(crate) commands: Vec<ConfiguredCommand>,
 }
 
@@ -113,6 +114,7 @@ fn required<T>(value: Option<T>, field: &str, command: &str) -> Result<T, String
 }
 
 fn parse_config(contents: &str) -> Result<Config, String> {
+    let mut port = None;
     let mut commands = Vec::new();
     let mut current: Option<PendingCommand> = None;
 
@@ -144,6 +146,16 @@ fn parse_config(contents: &str) -> Result<Config, String> {
             .ok_or_else(|| line_error(line_number, "expected key = value".to_owned()))?;
         let key = key.trim();
         let value = value.trim();
+        if current.is_none() {
+            if key != "port" {
+                return Err(line_error(
+                    line_number,
+                    "expected the port setting before command sections".to_owned(),
+                ));
+            }
+            set_once(&mut port, parse_port(value), key, line_number)?;
+            continue;
+        }
         let command = current.as_mut().ok_or_else(|| {
             line_error(
                 line_number,
@@ -186,7 +198,10 @@ fn parse_config(contents: &str) -> Result<Config, String> {
     if commands.is_empty() {
         return Err("configuration has no commands".to_owned());
     }
-    Ok(Config { commands })
+    Ok(Config {
+        port: port.ok_or_else(|| "configuration is missing port".to_owned())?,
+        commands,
+    })
 }
 
 fn set_once<T>(
@@ -300,6 +315,13 @@ fn parse_timeout(value: &str) -> Result<u64, String> {
     match value.parse() {
         Ok(seconds @ 1..) => Ok(seconds),
         _ => Err("timeout must be a positive number of seconds".to_owned()),
+    }
+}
+
+fn parse_port(value: &str) -> Result<u16, String> {
+    match value.parse::<u16>() {
+        Ok(port @ 1..) => Ok(port),
+        _ => Err("port must be between 1 and 65535".to_owned()),
     }
 }
 

@@ -31,9 +31,16 @@ fn parses_only_positive_timeouts() {
 }
 
 #[test]
+fn parses_only_valid_ports() {
+    assert_eq!(parse_port("8080").unwrap(), 8080);
+    assert!(parse_port("0").is_err());
+    assert!(parse_port("65536").is_err());
+}
+
+#[test]
 fn configuration_requires_every_setting() {
     let error = match parse_config(
-        "[command test]\napi_key = 00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa\ngroup = users\nexecutable = /bin/true\narguments = []\ntimeout = 30\n",
+        "port = 8080\n[command test]\napi_key = 00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa\ngroup = users\nexecutable = /bin/true\narguments = []\ntimeout = 30\n",
     ) {
         Ok(_) => panic!("configuration unexpectedly parsed"),
         Err(error) => error,

@@ -60,6 +60,7 @@ fn endpoints_require_the_matching_command_key() {
     second.id = "other".to_owned();
     second.api_key = [8; 32];
     let config = Config {
+        port: 8080,
         commands: vec![first, second],
     };
     let deployments = Arc::new(Deployments::new(config.commands.clone()));

@@ -1,6 +1,6 @@
 # autodeploy-server
 
-`autodeploy-server` is a small HTTP service for running a configured deployment command. It listens on `0.0.0.0:8080` and is intended to be placed behind Nginx or another TLS-terminating reverse proxy.
+`autodeploy-server` is a small HTTP service for running a configured deployment command. It listens on `0.0.0.0` at the configured port and is intended to be placed behind Nginx or another TLS-terminating reverse proxy.
 
 ## Install
 
@@ -30,6 +30,8 @@ The service refuses to start if these requirements are not met.
 Each command has a unique ID and API key. Every setting shown below is required, including `arguments`; use `[]` when no arguments are needed.
 
 ```ini
+port = 8080
+
 [command production]
 api_key = 8fc23f24979c4697b74e0af7f0c0bb1fd359aab35f3731656c70d3ab3ec4c0e8
 user = deploy

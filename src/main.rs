@@ -9,7 +9,7 @@ use std::sync::Arc;
 use config::Config;
 use deployment::Deployments;
 
-const LISTEN_ADDRESS: &str = "0.0.0.0:8080";
+const LISTEN_HOST: &str = "0.0.0.0";
 
 unsafe extern "C" {
     fn getuid() -> u32;
@@ -30,9 +30,10 @@ fn main() {
         Err(error) => fail(&error),
     };
     let deployments = Arc::new(Deployments::new(config.commands.clone()));
-    let listener = match TcpListener::bind(LISTEN_ADDRESS) {
+    let listen_address = format!("{LISTEN_HOST}:{}", config.port);
+    let listener = match TcpListener::bind(&listen_address) {
         Ok(listener) => listener,
-        Err(error) => fail(&format!("cannot bind {LISTEN_ADDRESS}: {error}")),
+        Err(error) => fail(&format!("cannot bind {listen_address}: {error}")),
     };
     http::serve(listener, config, deployments);
 }

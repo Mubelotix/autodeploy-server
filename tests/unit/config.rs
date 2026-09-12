@@ -24,9 +24,16 @@ fn parses_only_valid_api_keys() {
 }
 
 #[test]
+fn parses_only_positive_timeouts() {
+    assert_eq!(parse_timeout("1").unwrap(), 1);
+    assert!(parse_timeout("0").is_err());
+    assert!(parse_timeout("one").is_err());
+}
+
+#[test]
 fn configuration_requires_every_setting() {
     let error = match parse_config(
-        "[command test]\napi_key = 00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa\ngroup = users\nexecutable = /bin/true\narguments = []\n",
+        "[command test]\napi_key = 00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa00aa\ngroup = users\nexecutable = /bin/true\narguments = []\ntimeout = 30\n",
     ) {
         Ok(_) => panic!("configuration unexpectedly parsed"),
         Err(error) => error,

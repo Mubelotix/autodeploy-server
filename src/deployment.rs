@@ -3,7 +3,7 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::config::ConfiguredCommand;
 
@@ -207,7 +207,7 @@ fn reclaim_finished(deployments: &mut BTreeMap<u64, Deployment>) {
 }
 
 fn execute(command: &ConfiguredCommand) -> bool {
-    Command::new(&command.executable)
+    let mut child = match Command::new(&command.executable)
         .args(&command.arguments)
         .env_clear()
         .stdin(Stdio::null())
@@ -216,8 +216,27 @@ fn execute(command: &ConfiguredCommand) -> bool {
         .gid(command.gid)
         .uid(command.uid)
         .spawn()
-        .and_then(|mut child| child.wait())
-        .is_ok_and(|status| status.success())
+    {
+        Ok(child) => child,
+        Err(_) => return false,
+    };
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if started.elapsed() >= command.timeout => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(10)),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return false;
+            }
+        }
+    }
 }
 
 #[cfg(test)]

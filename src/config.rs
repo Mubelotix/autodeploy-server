@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Read;
 use std::os::unix::fs::MetadataExt;
+use std::time::Duration;
 
 const MAX_COMMANDS: usize = 128;
 
@@ -12,6 +13,7 @@ pub(crate) struct ConfiguredCommand {
     pub(crate) gid: u32,
     pub(crate) executable: String,
     pub(crate) arguments: Vec<String>,
+    pub(crate) timeout: Duration,
 }
 
 pub(crate) struct Config {
@@ -63,6 +65,7 @@ struct PendingCommand {
     group: Option<String>,
     executable: Option<String>,
     arguments: Option<Vec<String>>,
+    timeout: Option<u64>,
 }
 
 impl PendingCommand {
@@ -74,6 +77,7 @@ impl PendingCommand {
             group: None,
             executable: None,
             arguments: None,
+            timeout: None,
         }
     }
 
@@ -99,6 +103,7 @@ impl PendingCommand {
             gid,
             executable,
             arguments: required(self.arguments, "arguments", &self.id)?,
+            timeout: Duration::from_secs(required(self.timeout, "timeout", &self.id)?),
         })
     }
 }
@@ -171,6 +176,7 @@ fn parse_config(contents: &str) -> Result<Config, String> {
                 key,
                 line_number,
             )?,
+            "timeout" => set_once(&mut command.timeout, parse_timeout(value), key, line_number)?,
             _ => return Err(line_error(line_number, format!("unknown setting {key}"))),
         }
     }
@@ -288,6 +294,13 @@ fn parse_arguments(value: &str) -> Result<Vec<String>, String> {
             Ok(value.to_owned())
         })
         .collect()
+}
+
+fn parse_timeout(value: &str) -> Result<u64, String> {
+    match value.parse() {
+        Ok(seconds @ 1..) => Ok(seconds),
+        _ => Err("timeout must be a positive number of seconds".to_owned()),
+    }
 }
 
 fn lookup_user(name: &str) -> Result<u32, String> {

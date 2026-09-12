@@ -14,6 +14,7 @@ fn command() -> ConfiguredCommand {
         gid: unsafe { getgid() },
         executable: "/bin/true".to_owned(),
         arguments: Vec::new(),
+        timeout: Duration::from_secs(1),
     }
 }
 

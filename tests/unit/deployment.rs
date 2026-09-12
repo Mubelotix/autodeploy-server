@@ -5,7 +5,7 @@ unsafe extern "C" {
     fn getgid() -> u32;
 }
 
-fn command(arguments: Vec<&str>) -> ConfiguredCommand {
+fn command(arguments: Vec<&str>, timeout: Duration) -> ConfiguredCommand {
     ConfiguredCommand {
         id: "test".to_owned(),
         api_key: [7; 32],
@@ -13,6 +13,7 @@ fn command(arguments: Vec<&str>) -> ConfiguredCommand {
         gid: unsafe { getgid() },
         executable: "/bin/sleep".to_owned(),
         arguments: arguments.into_iter().map(str::to_owned).collect(),
+        timeout,
     }
 }
 
@@ -28,7 +29,10 @@ fn wait_for(manager: &Deployments, id: u64, expected: DeploymentStatus) {
 
 #[test]
 fn queues_follow_up_batch() {
-    let manager = Arc::new(Deployments::new(vec![command(vec!["0.20"])]));
+    let manager = Arc::new(Deployments::new(vec![command(
+        vec!["0.20"],
+        Duration::from_secs(1),
+    )]));
     let first = manager.start(0).unwrap();
     wait_for(&manager, first, DeploymentStatus::Running);
     let second = manager.start(0).unwrap();
@@ -38,4 +42,14 @@ fn queues_follow_up_batch() {
     wait_for(&manager, first, DeploymentStatus::Success);
     wait_for(&manager, second, DeploymentStatus::Success);
     assert_eq!(manager.status(third).unwrap().1, DeploymentStatus::Success);
+}
+
+#[test]
+fn fails_a_command_that_exceeds_its_timeout() {
+    let manager = Arc::new(Deployments::new(vec![command(
+        vec!["1"],
+        Duration::from_millis(50),
+    )]));
+    let id = manager.start(0).unwrap();
+    wait_for(&manager, id, DeploymentStatus::Failure);
 }

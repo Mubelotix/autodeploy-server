@@ -104,9 +104,6 @@ impl PendingCommand {
         let group = required(self.group, "group", &self.id)?;
         let uid = lookup_user(&user)?;
         let gid = lookup_group(&group)?;
-        if uid == 0 || gid == 0 {
-            return Err(format!("command {} must not use root", self.id));
-        }
         let executable = required(self.executable, "executable", &self.id)?;
         if !executable.starts_with('/') || executable.as_bytes().contains(&0) {
             return Err(format!(

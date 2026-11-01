@@ -46,7 +46,7 @@ timeout = 300
 - The executable must be an absolute path.
 - Arguments are a comma-separated list of quoted strings. Quotes and commas cannot be included in an argument.
 - `timeout` is a positive number of seconds. A command that exceeds it is terminated and reported as a failure.
-- Commands cannot run as the root user or root group.
+- Commands can run as any configured user or group, including root.
 
 ## API
 

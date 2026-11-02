@@ -1,6 +1,6 @@
 # autodeploy-server
 
-`autodeploy-server` is a small HTTP service for running a configured deployment command. It listens on `0.0.0.0` at the configured port and is intended to be placed behind Nginx or another TLS-terminating reverse proxy.
+`autodeploy-server` is a small HTTP service for running a configured deployment command. It listens on `127.0.0.1` at the configured port and is intended to be placed behind Nginx or another TLS-terminating reverse proxy on the same host.
 
 ## Install
 

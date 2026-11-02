@@ -10,7 +10,7 @@ use std::sync::{Arc, RwLock};
 use config::Config;
 use deployment::Deployments;
 
-const LISTEN_HOST: &str = "0.0.0.0";
+const LISTEN_HOST: &str = "127.0.0.1";
 
 unsafe extern "C" {
     fn getuid() -> u32;
